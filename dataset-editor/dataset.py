@@ -13,6 +13,7 @@ class DatasetItem:
     tags: list[str] = field(default_factory=list)
     selected: bool = False
     dirty: bool = False
+    deleted: bool = False
     
     def __post_init__(self) -> None:
         self.reload()
@@ -31,6 +32,17 @@ class DatasetItem:
             self.tags = []
         
         self.on_reset()
+    
+    def delete(self, soft: bool = True) -> None:
+        self.deleted = True
+        
+        if soft:
+            self.img_file.rename(self.img_file.with_suffix(self.img_file.suffix + ".deleted"))
+            self.tags_file.rename(self.tags_file.with_suffix(self.tags_file.suffix + ".deleted"))
+        else:
+            warnings.warn("Permanently deleting an image!")
+            self.img_file.unlink(missing_ok=True)
+            self.tags_file.unlink(missing_ok=True)
     
     def select_invert(self) -> None:
         self.on_selected(not self.selected)
@@ -191,6 +203,13 @@ class Dataset:
     def flush(self) -> None:
         for item in self.items:
             item.flush()
+    
+    def remove_images(self, mode: typing.Literal['selected', 'all'], soft: bool = True) -> None:
+        assert mode in ('selected', 'all'), f"Invalid mode {mode!r}"
+        
+        getattr(self, f"for_{mode}")(self.ITEM_CLS.delete, soft=soft)
+        
+        self.items = [item for item in self.items if not item.deleted]
     
     def __len__(self) -> int:
         return len(self.items)

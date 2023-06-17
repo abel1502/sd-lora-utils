@@ -130,33 +130,42 @@ class UIDatasetItem(dataset.DatasetItem):
 class UIDataset(dataset.Dataset):
     ITEM_CLS: typing.ClassVar[typing.Type[UIDatasetItem]] = UIDatasetItem
     
+    ui_controls: ui.row | None = None
+    ui_table: ui.table | None = None
     ui_input_A: ui.input | None = None
     ui_input_B: ui.input | None = None
     ui_affect_all: ui.checkbox | None = None
     ui_persist_inputs: ui.checkbox | None = None
     
     @classmethod
-    def setup(
-        cls,
-        path: str | pathlib.Path,
-        controls: ui.row,
-        table: ui.table,
-    ) -> UIDataset:
+    def from_path(cls, path: str | pathlib.Path) -> UIDataset:
         if isinstance(path, str):
             path = pathlib.Path(path)
         
-        controls.clear()
-        table.clear()
-        
-        self = cls(path)
+        return cls(path)
     
+    def setup(
+        self,
+        controls: ui.row,
+        table: ui.table,
+    ) -> UIDataset:
+        self.ui_controls = controls
+        self.ui_table = table
+        
+        controls.clear()
+        
         with controls:
             self.add_controls()
 
-        with table:
-            self.read()
+        self.reload()
         
         return self
+    
+    def reload(self) -> None:
+        self.ui_table.clear()
+        
+        with self.ui_table:
+            self.read()
     
     def add_controls(self) -> None:
         with ui.column().style('width: 90%'):
@@ -274,12 +283,14 @@ class UIDataset(dataset.Dataset):
                 value=0.4,
             )
             
+            def apply() -> None:
+                dialog.close()
+                
+                self.autotag(confidence_slider.value)
+            
             with ui.row():
-                ui.button("Autotag", on_click=lambda: (
-                    dialog.close(),
-                    self.autotag(confidence_slider.value),
-                ))
-                ui.button("Cancel", on_click=lambda: dialog.close())
+                ui.button("Autotag", on_click=apply)
+                ui.button("Cancel", on_click=dialog.close)
         
         dialog.open()
     
@@ -299,12 +310,14 @@ class UIDataset(dataset.Dataset):
                 value=0.98,
             )
             
+            def apply() -> None:
+                dialog.close()
+                
+                self.find_duplicates(similarity_slider.value)
+            
             with ui.row():
-                ui.button("Find duplicates", on_click=lambda: (
-                    dialog.close(),
-                    self.find_duplicates(similarity_slider.value),
-                ))
-                ui.button("Cancel", on_click=lambda: dialog.close())
+                ui.button("Find duplicates", on_click=apply)
+                ui.button("Cancel", on_click=dialog.close)
         
         dialog.open()
     
@@ -320,22 +333,35 @@ class UIDataset(dataset.Dataset):
                 which = "all"
                 count = len(self)
             
-            ui.label(
-                f"Are you sure you want to permanently remove {which} images ({count}) from this dataset?"
+            ui.markdown(
+                f"Are you sure you want to delete {which} images ({count}) from this dataset?\n\n"
+                f" - Selecting 'Yes' will mark the images and tags with `.deleted` suffix.\n"
+                f" - Selecting 'DELETE PERMANENTLY' will permanently delete the image and tag files. Use with caution!\n"
             )
             
-            with ui.row():
-                ui.button("Yes", on_click=lambda: (
-                    dialog.close(),
-                    self.remove_images(),
-                ), color='red')
-                ui.button("No", on_click=lambda: dialog.close())
+            def apply(soft: bool) -> None:
+                dialog.close()
+                self.remove_images(
+                    'all' if self.ui_affect_all.value else 'selected',
+                    soft=soft,
+                )
+            
+            with ui.row().classes('w-full'):
+                ui.button("Yes", on_click=lambda: apply(soft=True), color='amber')
+                ui.button("No", on_click=dialog.close)
+                
+                safety = ui.switch().style('margin-left: auto')
+                delete_hard = ui.button("DELETE PERMANENTLY", on_click=lambda: apply(soft=False), color='red')
+                
+                delete_hard.disable()
+                safety.bind_value(delete_hard, 'enabled')
         
         dialog.open()
+    
+    def remove_images(self, mode: typing.Literal['selected', 'all'], soft: bool = True) -> None:
+        super().remove_images(mode, soft)
         
-
-    def remove_images(self) -> None:
-        ui.notify('Not implemented yet!', type='info')
+        self.reload()
 
 
 def run_ui(
@@ -359,7 +385,7 @@ def run_ui(
     table = ui.row().classes('w-full')
     
     def load_dataset() -> None:
-        ds = UIDataset.setup(dataset_path_field.value, dataset_controls, table)
+        ds = UIDataset.from_path(dataset_path_field.value).setup(dataset_controls, table)
         
         dataset_save_btn.on(
             "click",
