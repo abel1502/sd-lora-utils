@@ -4,7 +4,8 @@ import pathlib
 import argparse
 import subprocess
 import toml
-import os
+
+from kohya_runner import run_kohya
 
 
 parser = argparse.ArgumentParser(
@@ -44,15 +45,19 @@ def main() -> None:
     
     # TODO: Also allow autogenerating configs
     
-    command = f"""\
-    cd {HERE / "kohya-trainer"} && \
-    call .venv\\Scripts\\activate.bat && \
-    set TF_CPP_MIN_LOG_LEVEL="3" && set BITSANDBYTES_NOWELCOME="1" && set SAFETENSORS_FAST_GPU="1" && \
-    accelerate launch --config_file=accelerate_config/config.yaml --num_cpu_threads_per_process=1 \
-        train_network.py --dataset_config={project_path / "dataset_config.toml"} --config_file={project_path / "training_config.toml"}
-    """
-    
-    subprocess.check_call(command, shell=True)
+    run_kohya(
+        "train_network.py",
+        accelerate=True,
+        args=[
+            "--dataset_config", str(project_path / "dataset_config.toml"),
+            "--config_file", str(project_path / "training_config.toml"),
+        ],
+        env=dict(
+            TF_CPP_MIN_LOG_LEVEL="3",
+            BITSANDBYTES_NOWELCOME="1",
+            SAFETENSORS_FAST_GPU="1",
+        ),
+    )
     
     print("Done!")
 
