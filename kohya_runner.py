@@ -3,6 +3,7 @@ import typing
 import pathlib
 import subprocess
 import shlex
+import platform
 
 
 HERE: typing.Final[pathlib.Path] = pathlib.Path(__file__).parent.resolve()
@@ -35,11 +36,16 @@ def run_kohya(
     if env is None:
         env = {}
     
-    env_str = " && ".join(f"set {key}={shlex.quote(value)}" for key, value in env.items())
+    activate_script = pathlib.Path(".venv/Scripts/activate")
+    env_str = "export " + " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items())
+    
+    if platform.system() == "Windows":
+        activate_script = activate_script.with_suffix(".bat")
+        env_str = " && ".join(f"set {key}={shlex.quote(value)}" for key, value in env.items())
     
     command = f"""\
     cd {kohya_path} && \
-    call {pathlib.Path(".venv/Scripts/activate.bat")} && \
+    call {activate_script} && \
     {env_str} && \
     {runner} {script} {args}
     """
