@@ -1,0 +1,6 @@
+.venv
+.nicegui
+.vscode
+__pycache__
+/kohya-trainer
+
