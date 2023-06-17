@@ -24,9 +24,15 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "-s", "--show",
+    "--show",
     action="store_true",
     help="open the browser automatically",
+)
+
+parser.add_argument(
+    "--dark-mode",
+    action="store_true",
+    help="start in dark mode"
 )
 
 
@@ -37,6 +43,7 @@ def main() -> None:
         port=args.port,
         dataset_path=args.dataset,
         show=args.show,
+        dark_mode=args.dark_mode,
     )
 
 

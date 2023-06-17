@@ -33,16 +33,19 @@ class DatasetItem:
         self.on_reset()
     
     def select_invert(self) -> None:
-        self.selected = not self.selected
+        self.on_selected(not self.selected)
     
     def select_set(self, value: bool = True) -> None:
-        self.selected = value
+        self.on_selected(value)
     
     def on_changed(self) -> None:
         self.dirty = True
     
     def on_reset(self) -> None:
         self.dirty = False
+    
+    def on_selected(self, state: bool) -> None:
+        self.selected = state
     
     def deduplicate(self) -> None:
         old_len: int = len(self.tags)
