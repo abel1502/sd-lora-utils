@@ -53,6 +53,23 @@ def split_tags(text: str) -> list[str]:
     return [x for x in map(str.strip, text.split(',')) if x]
 
 
+def labeled_slider(
+    name: str,
+    *,
+    min: float = 0.0,
+    max: float = 1.0,
+    step: float = 0.01,
+    value: float | None = None,
+    on_change: typing.Callable[[float], None] | None = None,
+) -> ui.slider:
+    with ui.column():
+        label = ui.markdown("")
+        slider = ui.slider(min=min, max=max, step=step, value=value, on_change=on_change)\
+            .bind_value_to(label, "content", lambda x: f"{name}: **{x:.2f}**")
+    
+    return slider
+
+
 @dataclass
 class UIDatasetItem(dataset.DatasetItem):
     card: ui.card | None = None
@@ -230,14 +247,95 @@ class UIDataset(dataset.Dataset):
     def _add_special_buttons(self) -> None:
         ui.button(
             "Autotag",
-            on_click=lambda: ui.notify('Not implemented yet!', type='info'),
+            on_click=lambda: self.ask_autotag(),
             color='purple',
         )
         ui.button(
-            "Remove duplicates",
-            on_click=lambda: ui.notify('Not implemented yet!', type='info'),
+            "Find duplicates",
+            on_click=lambda: self.ask_find_duplicates(),
             color='purple',
         )
+        ui.button(
+            "Remove images",
+            on_click=lambda: self.ask_remove_images(),
+            color='red',
+        )
+    
+    def ask_autotag(self) -> None:
+        with ui.dialog() as dialog, ui.card():
+            ui.markdown(
+                "This will autotag all images in the dataset. "
+                "This is a slow process, so be patient!\n"
+                "This uses the `kohya-scripts` tagger with the `SmilingWolf/wd-v1-4-swinv2-tagger-v2` model.\n"
+            )
+            
+            confidence_slider = labeled_slider(
+                "Confidence threshold (higher values give fewer but more accurate tags)",
+                value=0.4,
+            )
+            
+            with ui.row():
+                ui.button("Autotag", on_click=lambda: (
+                    dialog.close(),
+                    self.autotag(confidence_slider.value),
+                ))
+                ui.button("Cancel", on_click=lambda: dialog.close())
+        
+        dialog.open()
+    
+    def autotag(self, threshold: float) -> None:
+        ui.notify('Not implemented yet!', type='info')
+    
+    def ask_find_duplicates(self) -> None:
+        with ui.dialog() as dialog, ui.card():
+            ui.markdown(
+                "This will find and select duplicate images in the dataset. "
+                "This is a slow process, so be patient!\n"
+                "This uses the `imagededup` library.\n"
+            )
+            
+            similarity_slider = labeled_slider(
+                "Similarity threshold (how similar two images must be to be considered duplicates)",
+                value=0.98,
+            )
+            
+            with ui.row():
+                ui.button("Find duplicates", on_click=lambda: (
+                    dialog.close(),
+                    self.find_duplicates(similarity_slider.value),
+                ))
+                ui.button("Cancel", on_click=lambda: dialog.close())
+        
+        dialog.open()
+    
+    def find_duplicates(self, threshold: float) -> None:
+        ui.notify('Not implemented yet!', type='info')
+    
+    def ask_remove_images(self) -> None:
+        with ui.dialog() as dialog, ui.card():
+            which: str = "the selected"
+            count: int = len(self.get_selection())
+            
+            if self.ui_affect_all.value:
+                which = "all"
+                count = len(self)
+            
+            ui.label(
+                f"Are you sure you want to permanently remove {which} images ({count}) from this dataset?"
+            )
+            
+            with ui.row():
+                ui.button("Yes", on_click=lambda: (
+                    dialog.close(),
+                    self.remove_images(),
+                ), color='red')
+                ui.button("No", on_click=lambda: dialog.close())
+        
+        dialog.open()
+        
+
+    def remove_images(self) -> None:
+        ui.notify('Not implemented yet!', type='info')
 
 
 def run_ui(

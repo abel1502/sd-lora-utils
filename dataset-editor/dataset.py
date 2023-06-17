@@ -191,3 +191,9 @@ class Dataset:
     def flush(self) -> None:
         for item in self.items:
             item.flush()
+    
+    def __len__(self) -> int:
+        return len(self.items)
+    
+    def get_selection(self) -> list[DatasetItem]:
+        return [item for item in self.items if item.selected]
