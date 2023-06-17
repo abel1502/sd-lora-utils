@@ -25,8 +25,6 @@ def run_kohya(
     if isinstance(script, str):
         script = pathlib.Path(script)
     
-    script = kohya_path / script
-    
     if not isinstance(args, str):
         args = shlex.join(args)
     
@@ -40,7 +38,8 @@ def run_kohya(
     env_str = " && ".join(f"set {key}={shlex.quote(value)}" for key, value in env.items())
     
     command = f"""\
-    call {kohya_path / ".venv/Scripts/activate.bat"} && \
+    cd {kohya_path} && \
+    call {pathlib.Path(".venv/Scripts/activate.bat")} && \
     {env_str} && \
     {runner} {script} {args}
     """
