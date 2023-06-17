@@ -128,7 +128,7 @@ class UIDatasetItem(dataset.DatasetItem):
 
     @property
     def tags_str(self) -> str:
-        return ', '.join(self.tags) + ','
+        return ', '.join(self.tags) + (',' if self.tags else '')
     
     def update_from_input(self, text: str) -> None:
         self.set_tags(split_tags(text))
