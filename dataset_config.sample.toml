@@ -1,0 +1,17 @@
+[[datasets]]
+
+[[datasets.subsets]]
+num_repeats = 6
+image_dir = "E:\\Media\\LoRAs\\anak_zahard\\dataset"
+
+[general]
+resolution = 512
+shuffle_caption = true
+keep_tokens = 1
+flip_aug = false
+caption_extension = ".txt"
+enable_bucket = true
+bucket_reso_steps = 64
+bucket_no_upscale = false
+min_bucket_reso = 256
+max_bucket_reso = 1024
