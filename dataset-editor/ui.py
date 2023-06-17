@@ -453,23 +453,23 @@ def run_ui(
         
         dataset_pick_btn.on(
             "click",
-            pick_dataset,
+            lambda _: pick_dataset(),
         )
 
     dataset_controls = ui.row().classes('w-full justify-between')
     table = ui.row().classes('w-full')
     
-    def load_dataset() -> None:
+    def _load_dataset() -> None:
         ds = UIDataset.from_path(dataset_path_field.value).setup(dataset_controls, table)
         
         dataset_save_btn.on(
             "click",
             lambda _: ds.flush(),
         )
-
+    
     dataset_load_btn.on(
         "click",
-        lambda _: load_dataset(),
+        lambda _: _load_dataset(),
     )
 
     with ui.page_sticky('bottom-right', x_offset=20, y_offset=20).style('z-index: 1000'):
@@ -477,7 +477,7 @@ def run_ui(
     
     if dataset_path:
         dataset_path_field.value = str(dataset_path)
-        load_dataset()
+        _load_dataset()
     
     ui.run(
         title="Dataset Tag Editor",
