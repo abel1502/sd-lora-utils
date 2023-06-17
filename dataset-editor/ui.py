@@ -26,6 +26,10 @@ GLOBAL_CSS: typing.Final[str] = """
     .body--light .card-selected {
         background-color: #CCE5FF;
     }
+    
+    .no-bootom-margin > p {
+        margin-bottom: 0 !important;
+    }
 </style>
 """
 
@@ -75,6 +79,7 @@ def labeled_slider(
 class UIDatasetItem(dataset.DatasetItem):
     card: ui.card | None = None
     prev_tags_label: ui.markdown | None = None
+    selected_field: ui.checkbox | None = None
     input_field: ui.textarea | None = None
     
     def __post_init__(self) -> None:
@@ -84,8 +89,7 @@ class UIDatasetItem(dataset.DatasetItem):
             ui.image(self.img_file).props('fit=scale-down').style('max-width: 100%, max-height: 100%')
             
             with ui.card_section():
-                ui.checkbox(f"{self.img_file.name}", on_change=lambda x: self.select_set(x.value)) \
-                    .bind_value_from(self, 'selected')
+                self.selected_field = ui.checkbox(f"{self.img_file.name}", on_change=lambda x: self.select_set(x.value))
                 self.prev_tags_label = ui.markdown("")
                 self.input_field = ui.textarea('Tags')
                 ui.button('Update', on_click=lambda _: self.update_from_input(self.input_field.value))
@@ -105,8 +109,11 @@ class UIDatasetItem(dataset.DatasetItem):
         self.update_style()
     
     def on_selected(self, state: bool) -> None:
+        self.parent.selected_cnt += state - self.selected
+        
         super().on_selected(state)
         
+        self.selected_field.value = state
         self.update_style()
     
     def update_style(self) -> None:
@@ -130,6 +137,8 @@ class UIDatasetItem(dataset.DatasetItem):
 @dataclass
 class UIDataset(dataset.Dataset):
     ITEM_CLS: typing.ClassVar[typing.Type[UIDatasetItem]] = UIDatasetItem
+    
+    selected_cnt: int = 0
     
     ui_controls: ui.row | None = None
     ui_table: ui.table | None = None
@@ -175,6 +184,8 @@ class UIDataset(dataset.Dataset):
             self._add_select_buttons()
         
             self._add_op_buttons()
+        
+        self._add_selected_badge()
 
     def _apply_op(
         self,
@@ -189,6 +200,9 @@ class UIDataset(dataset.Dataset):
         
         applier(func, *args, **kwargs)
         
+        self._reset_after_op()
+    
+    def _reset_after_op(self) -> None:
         if not self.ui_persist_inputs.value:
             self.ui_input_A.value = ""
             self.ui_input_B.value = ""
@@ -206,12 +220,49 @@ class UIDataset(dataset.Dataset):
             self.ui_input_B = ui.input('B').style('min-width: 600px')  # .style('width: 45%')
 
     def _add_select_buttons(self) -> None:
+        def _find() -> None:
+            search: list[str] = self._input_tags('A')
+            
+            self.for_all(
+                lambda item: item.select_set(
+                    item.match_tags(search)
+                )
+            )
+            
+            self._reset_after_op()
+        
+        def _find_in_selection() -> None:
+            search: list[str] = self._input_tags('A')
+            base_all: bool = self.ui_affect_all.value
+            
+            self.for_all(
+                lambda item: item.select_set(
+                    (base_all or item.selected)
+                    and item.match_tags(search)
+                )
+            )
+            
+            self._reset_after_op()
+        
         with ui.row():
-            ui.button("Select all", on_click=lambda: self.select_all())
-            ui.button("Reset selection", on_click=lambda: self.select_none())
-            ui.button("Invert selection", on_click=lambda: self.select_invert())
+            ui.button("Select all", on_click=self.select_all)
+            ui.button("Reset selection", on_click=self.select_none)
+            ui.button("Invert selection", on_click=self.select_invert)
+            
+            ui.button("Find A", on_click=_find)
+            ui.button("Find A in selection", on_click=_find_in_selection)
+            
             self.ui_affect_all = ui.checkbox("Affect everything")
             self.ui_persist_inputs = ui.checkbox("Persist inputs")
+
+    def _add_selected_badge(self) -> None:
+        with (
+            ui.page_sticky('top-right', x_offset=20, y_offset=20).style('z-index: 1000'),
+            ui.card(),
+        ):
+            ui.markdown() \
+                .classes("no-bootom-margin") \
+                .bind_content_from(self, 'selected_cnt', lambda x: f"Selected: **{x}**")
 
     def _add_op_buttons(self) -> None:
         with ui.row():
@@ -328,14 +379,14 @@ class UIDataset(dataset.Dataset):
     def ask_remove_images(self) -> None:
         with ui.dialog() as dialog, ui.card():
             which: str = "the selected"
-            count: int = len(self.get_selection())
+            assert self.selected_cnt == len(self.get_selection()), "Sanity check failed!"
             
             if self.ui_affect_all.value:
                 which = "all"
                 count = len(self)
             
             ui.markdown(
-                f"Are you sure you want to delete {which} images ({count}) from this dataset?\n\n"
+                f"Are you sure you want to delete {which} images ({self.selected_cnt}) from this dataset?\n\n"
                 f" - Selecting 'Yes' will mark the images and tags with `.deleted` suffix.\n"
                 f" - Selecting 'DELETE PERMANENTLY' will permanently delete the image and tag files. Use with caution!\n"
             )
@@ -421,7 +472,7 @@ def run_ui(
         lambda _: load_dataset(),
     )
 
-    with ui.page_sticky():
+    with ui.page_sticky('bottom-right', x_offset=20, y_offset=20).style('z-index: 1000'):
         ui.button("Scroll to the top", on_click=scroll_top)
     
     if dataset_path:

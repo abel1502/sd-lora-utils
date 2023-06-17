@@ -1,6 +1,5 @@
 from __future__ import annotations
 import typing
-import numpy as np
 import pathlib
 from dataclasses import dataclass, field
 import warnings
@@ -8,6 +7,7 @@ import warnings
 
 @dataclass
 class DatasetItem:
+    parent: Dataset
     img_file: pathlib.Path
     tags_file: pathlib.Path
     tags: list[str] = field(default_factory=list)
@@ -114,22 +114,21 @@ class DatasetItem:
         if len(self.tags) != old_len:
             self.on_changed()
     
+    def match_tags(
+        self,
+        tags: str | typing.Collection[str],
+    ) -> bool:
+        if isinstance(tags, str):
+            tags = [tags]
+        
+        return all(i in self.tags for i in tags)
+    
     def replace_tags(
         self,
         search: str | typing.Collection[str],
         replace: str | typing.Collection[str],
-        mode: typing.Literal['all', 'any'] = 'all',
     ) -> None:
-        if isinstance(search, str):
-            search = [search]
-        if isinstance(replace, str):
-            replace = [replace]
-        
-        matches: list[bool] = [i in self.tags for i in search]
-        
-        if mode == 'all' and not np.all(matches):
-            return
-        if mode == 'any' and not np.any(matches):
+        if not self.match_tags(search):
             return
         
         self.remove_tags(search)
@@ -162,7 +161,7 @@ class Dataset:
             tags_path: pathlib.Path = img_path.with_suffix(self.tags_file_ext)
             existing_tags_files += tags_path.exists()
             
-            self.items.append(self.ITEM_CLS(img_path, tags_path))
+            self.items.append(self.ITEM_CLS(self, img_path, tags_path))
         
         if existing_tags_files < len(self.items):
             warnings.warn(
