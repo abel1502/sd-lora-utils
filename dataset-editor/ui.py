@@ -6,6 +6,7 @@ import pathlib
 from dataclasses import dataclass, field
 
 from . import dataset
+from .local_file_picker import local_file_picker
 
 
 GLOBAL_CSS: typing.Final[str] = """
@@ -35,7 +36,7 @@ async def toggle_dark(x: typing.Any) -> None:
     await ui.run_javascript(f'Quasar.Dark.set({js_value})', respond=False)
 
 
-async def scroll_top():
+async def scroll_top() -> None:
     await ui_globals.get_client().connected()
     await ui.run_javascript("window.scrollTo(0, 0)", respond=False)
 
@@ -376,10 +377,33 @@ def run_ui(
     ui.switch("Toggle dark mode", on_change=toggle_dark).set_value(dark_mode)
     
     with ui.row():
-        dataset_path_field = ui.input("Dataset path", placeholder="C:\\Users\\User\\datasets\\dataset1").style("min-width: 600px")
+        dataset_path_field = ui.input("Dataset path", placeholder="C:\\my_datasets\\dataset1").style("min-width: 600px")
         # TODO: Allow picking the tag file extension as well?
-        dataset_path_btn = ui.button("Load dataset").props("size=lg")
+        dataset_pick_btn = ui.button("📁").props("size=lg")
+        dataset_load_btn = ui.button("Load dataset").props("size=lg")
         dataset_save_btn = ui.button("Save to disk", color='orange').props("size=lg")
+    
+        async def pick_dataset() -> None:
+            start: str = dataset_path_field.value
+            
+            if not start.strip():
+                start = "/"
+            
+            folder = await local_file_picker(
+                start,
+                upper_limit=None,
+                expect_dir=True,
+            )
+            
+            if folder is None:
+                return
+            
+            dataset_path_field.value = str(folder)
+        
+        dataset_pick_btn.on(
+            "click",
+            pick_dataset,
+        )
 
     dataset_controls = ui.row().classes('w-full justify-between')
     table = ui.row().classes('w-full')
@@ -392,7 +416,7 @@ def run_ui(
             lambda _: ds.flush(),
         )
 
-    dataset_path_btn.on(
+    dataset_load_btn.on(
         "click",
         lambda _: load_dataset(),
     )
