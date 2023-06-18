@@ -54,10 +54,6 @@ def to_base64(path: str | pathlib.Path, picname: str) -> str:
     )
 
 
-def split_tags(text: str) -> list[str]:
-    return [x for x in map(str.strip, text.split(',')) if x]
-
-
 def labeled_slider(
     name: str,
     *,
@@ -128,10 +124,10 @@ class UIDatasetItem(dataset.DatasetItem):
 
     @property
     def tags_str(self) -> str:
-        return ', '.join(self.tags) + (',' if self.tags else '')
+        return dataset.join_tags(self.tags, trailing_comma=True)
     
     def update_from_input(self, text: str) -> None:
-        self.set_tags(split_tags(text))
+        self.set_tags(dataset.split_tags(text))
 
 
 @dataclass
@@ -211,7 +207,7 @@ class UIDataset(dataset.Dataset):
     def _input_tags(self, field: typing.Literal['A', 'B'] = 'A') -> list[str]:
         assert field in ('A', 'B'), f"Invalid field {field!r}"
         
-        return split_tags(getattr(self, f'ui_input_{field}').value)
+        return dataset.split_tags(getattr(self, f'ui_input_{field}').value)
 
     def _add_inputs(self) -> None:
         with ui.row().classes('w-full'):

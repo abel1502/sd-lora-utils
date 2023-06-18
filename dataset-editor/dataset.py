@@ -5,6 +5,14 @@ from dataclasses import dataclass, field
 import warnings
 
 
+def split_tags(text: str) -> list[str]:
+    return [x for x in map(str.strip, text.split(',')) if x]
+
+
+def join_tags(tags: list[str], *, trailing_comma: bool = False) -> str:
+    return ', '.join(tags) + (',' if trailing_comma and tags else '')
+
+
 @dataclass
 class DatasetItem:
     parent: Dataset
@@ -20,13 +28,13 @@ class DatasetItem:
     
     def flush(self, force: bool = False) -> None:
         if self.dirty or force:
-            self.tags_file.write_text(', '.join(self.tags))
+            self.tags_file.write_text(join_tags(self.tags))
         
         self.on_reset()
     
     def reload(self) -> None:
         if self.tags_file.exists():
-            self.tags = self.tags_file.read_text().split(', ')
+            self.tags = split_tags(self.tags_file.read_text())
         else:
             self.tags_file.touch()
             self.tags = []
@@ -215,3 +223,11 @@ class Dataset:
     
     def get_selection(self) -> list[DatasetItem]:
         return [item for item in self.items if item.selected]
+
+
+__all__ = [
+    "split_tags",
+    "join_tags",
+    "DatasetItem",
+    "Dataset",
+]
