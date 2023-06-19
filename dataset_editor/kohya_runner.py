@@ -6,10 +6,6 @@ import shlex
 import platform
 
 
-HERE: typing.Final[pathlib.Path] = pathlib.Path(__file__).parent.resolve()
-# DEFAULT_KOHYA_PATH: typing.Final[pathlib.Path] = HERE / "../LoRA_Easy_Training_Scripts/sd_scripts"
-
-
 def run_kohya(
     script: str | pathlib.Path,
     *,

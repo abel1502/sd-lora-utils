@@ -47,6 +47,7 @@ def main() -> None:
     args = parser.parse_args()
 
     ui.run_ui(
+        kohya_path=args.kohya,
         port=args.port,
         dataset_path=args.dataset,
         show=args.show,

@@ -159,6 +159,13 @@ class Dataset:
     path: pathlib.Path
     items: list[DatasetItem] = field(default_factory=list)
     tags_file_ext: str = ".txt"
+    
+    @classmethod
+    def from_path(cls, path: str | pathlib.Path) -> Dataset:
+        if isinstance(path, str):
+            path = pathlib.Path(path)
+        
+        return cls(path)
 
     def read(self) -> None:
         self.items = []

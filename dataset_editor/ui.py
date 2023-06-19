@@ -4,8 +4,10 @@ from nicegui import ui, globals as ui_globals
 import base64
 import pathlib
 from dataclasses import dataclass, field
+import asyncio
 
 from . import dataset
+from .kohya_runner import run_kohya
 from .local_file_picker import local_file_picker
 
 
@@ -32,6 +34,8 @@ GLOBAL_CSS: typing.Final[str] = """
     }
 </style>
 """
+
+KOHYA_PATH: pathlib.Path | None = None
 
 
 async def toggle_dark(x: typing.Any) -> None:
@@ -69,6 +73,11 @@ def labeled_slider(
             .bind_value_to(label, "content", lambda x: f"{name}: **{x:.2f}**")
     
     return slider
+
+
+def remove_tags_underscores(tags: typing.Sequence[str]) -> list[str]:
+    # TODO: Maybe not ignore short tags?
+    return [tag.replace('_', ' ') if len(tag) > 3 else tag for tag in tags]
 
 
 @dataclass
@@ -143,12 +152,11 @@ class UIDataset(dataset.Dataset):
     ui_affect_all: ui.checkbox | None = None
     ui_persist_inputs: ui.checkbox | None = None
     
-    @classmethod
-    def from_path(cls, path: str | pathlib.Path) -> UIDataset:
-        if isinstance(path, str):
-            path = pathlib.Path(path)
-        
-        return cls(path)
+    ui_loading_dialog: ui.dialog | None = None
+    ui_autotag_dialog: ui.dialog | None = None
+    ui_find_duplicates_dialog: ui.dialog | None = None
+    ui_remove_images_dialog: ui.dialog | None = None
+    
     
     def setup(
         self,
@@ -157,6 +165,8 @@ class UIDataset(dataset.Dataset):
     ) -> UIDataset:
         self.ui_controls = controls
         self.ui_table = table
+        
+        self.setup_dialogs()
         
         controls.clear()
         
@@ -172,6 +182,100 @@ class UIDataset(dataset.Dataset):
         
         with self.ui_table:
             self.read()
+    
+    def setup_dialogs(self) -> None:
+        with ui.dialog().props("persistent") as self.ui_loading_dialog:
+            ui.spinner(size='xl')
+        
+        with ui.dialog() as self.ui_autotag_dialog, ui.card():
+            ui.markdown(
+                "This will autotag all images in the dataset. "
+                "This is a slow process, so be patient!\n"
+                "This uses `kohya`'s tagger with the `SmilingWolf/wd-v1-4-swinv2-tagger-v2` model.\n"
+                "\n"
+                "Warning: your tags will be overwritten without any further confirmation!\n"
+            )
+            
+            confidence_slider = labeled_slider(
+                "Confidence threshold (higher values give fewer but more accurate tags)",
+                value=0.4,
+            )
+            
+            blacklist_tags = ui.input(
+                "Blacklist tags",
+                value=dataset.join_tags(
+                    "official alternate costume", "official alternate hairstyle",
+                    "official alternate hair length",
+                    "alternate costume", "alternate hairstyle",
+                    "alternate hair length", "alternate hair color",
+                ),
+            )
+            
+            def apply() -> None:
+                self.ui_autotag_dialog.close()
+                
+                self.autotag(
+                    confidence_slider.value,
+                    dataset.split_tags(blacklist_tags.value),
+                )
+            
+            with ui.row():
+                ui.button("Autotag", on_click=apply)
+                ui.button("Cancel", on_click=self.ui_autotag_dialog.close)
+    
+        with ui.dialog() as self.ui_find_duplicates_dialog, ui.card():
+            ui.markdown(
+                "This will find and select duplicate images in the dataset. "
+                "This is a slow process, so be patient!\n"
+                "This uses the `imagededup` library.\n"
+            )
+            
+            similarity_slider = labeled_slider(
+                "Similarity threshold (how similar two images must be to be considered duplicates)",
+                value=0.98,
+            )
+            
+            def apply() -> None:
+                self.ui_find_duplicates_dialog.close()
+                
+                self.find_duplicates(similarity_slider.value)
+            
+            with ui.row():
+                ui.button("Find duplicates", on_click=apply)
+                ui.button("Cancel", on_click=self.ui_find_duplicates_dialog.close)
+    
+        with ui.dialog() as self.ui_remove_images_dialog, ui.card():
+            which: str = "the selected"
+            assert self.selected_cnt == len(self.get_selection()), "Sanity check failed!"
+            
+            if self.ui_affect_all.value:
+                which = "all"
+                count = len(self)
+            
+            ui.markdown(
+                f"Are you sure you want to delete {which} images ({self.selected_cnt}) from this dataset?\n\n"
+                f" - Selecting 'Yes' will mark the images and tags with `.deleted` suffix.\n"
+                f" - Selecting 'DELETE PERMANENTLY' will permanently delete the image and tag files. Use with caution!\n"
+            )
+            
+            def apply(soft: bool) -> None:
+                self.ui_remove_images_dialog.close()
+                self.remove_images(
+                    'all' if self.ui_affect_all.value else 'selected',
+                    soft=soft,
+                )
+            
+            with ui.row().classes('w-full'):
+                ui.button("Yes", on_click=lambda: apply(soft=True), color='amber')
+                ui.button("No", on_click=self.ui_remove_images_dialog.close)
+                
+                safety = ui.switch().style('margin-left: auto')
+                delete_hard = ui.button("DELETE PERMANENTLY", on_click=lambda: apply(soft=False), color='red')
+                
+                delete_hard.disable()
+                safety.bind_value(delete_hard, 'enabled')
+    
+        # TODO: More?
     
     def add_controls(self) -> None:
         with ui.column().style('width: 90%'):
@@ -304,107 +408,51 @@ class UIDataset(dataset.Dataset):
     def _add_special_buttons(self) -> None:
         ui.button(
             "Autotag",
-            on_click=lambda: self.ask_autotag(),
+            on_click=self.ui_autotag_dialog.open,
             color='purple',
         )
         ui.button(
             "Find duplicates",
-            on_click=lambda: self.ask_find_duplicates(),
+            on_click=self.ui_find_duplicates_dialog.open,
             color='purple',
         )
         ui.button(
             "Remove images",
-            on_click=lambda: self.ask_remove_images(),
+            on_click=self.ui_remove_images_dialog.open,
             color='red',
         )
     
-    def ask_autotag(self) -> None:
-        with ui.dialog() as dialog, ui.card():
-            ui.markdown(
-                "This will autotag all images in the dataset. "
-                "This is a slow process, so be patient!\n"
-                "This uses the `kohya-scripts` tagger with the `SmilingWolf/wd-v1-4-swinv2-tagger-v2` model.\n"
-            )
-            
-            confidence_slider = labeled_slider(
-                "Confidence threshold (higher values give fewer but more accurate tags)",
-                value=0.4,
-            )
-            
-            def apply() -> None:
-                dialog.close()
-                
-                self.autotag(confidence_slider.value)
-            
-            with ui.row():
-                ui.button("Autotag", on_click=apply)
-                ui.button("Cancel", on_click=dialog.close)
+    def autotag(self, threshold: float, blacklist_tags: list[str]) -> None:
+        ui.notify("Autotagging...", type='info')
         
-        dialog.open()
-    
-    def autotag(self, threshold: float) -> None:
-        ui.notify('Not implemented yet!', type='info')
-    
-    def ask_find_duplicates(self) -> None:
-        with ui.dialog() as dialog, ui.card():
-            ui.markdown(
-                "This will find and select duplicate images in the dataset. "
-                "This is a slow process, so be patient!\n"
-                "This uses the `imagededup` library.\n"
-            )
-            
-            similarity_slider = labeled_slider(
-                "Similarity threshold (how similar two images must be to be considered duplicates)",
-                value=0.98,
-            )
-            
-            def apply() -> None:
-                dialog.close()
-                
-                self.find_duplicates(similarity_slider.value)
-            
-            with ui.row():
-                ui.button("Find duplicates", on_click=apply)
-                ui.button("Cancel", on_click=dialog.close)
+        run_kohya(
+            "finetune/tag_images_by_wd14_tagger.py",
+            kohya_path=KOHYA_PATH,
+            args=[
+                str(self.path),
+                "--repo_id=SmilingWolf/wd-v1-4-swinv2-tagger-v2",
+                "--model_dir=./cache",
+                f"--thresh={threshold}",
+                "--batch_size=8",
+                f"--caption_extension={self.tags_file_ext}",
+            ],
+            env=dict(
+                TF_CPP_MIN_LOG_LEVEL="2",
+            ),
+        )
         
-        dialog.open()
+        self.reload()
+        
+        for item in self.items:
+            item.set_tags(remove_tags_underscores(item.tags))
+            item.remove_tags(blacklist_tags)
+        
+        self.flush()
+        
+        ui.notify("Autotagging complete!", type='success')
     
     def find_duplicates(self, threshold: float) -> None:
         ui.notify('Not implemented yet!', type='info')
-    
-    def ask_remove_images(self) -> None:
-        with ui.dialog() as dialog, ui.card():
-            which: str = "the selected"
-            assert self.selected_cnt == len(self.get_selection()), "Sanity check failed!"
-            
-            if self.ui_affect_all.value:
-                which = "all"
-                count = len(self)
-            
-            ui.markdown(
-                f"Are you sure you want to delete {which} images ({self.selected_cnt}) from this dataset?\n\n"
-                f" - Selecting 'Yes' will mark the images and tags with `.deleted` suffix.\n"
-                f" - Selecting 'DELETE PERMANENTLY' will permanently delete the image and tag files. Use with caution!\n"
-            )
-            
-            def apply(soft: bool) -> None:
-                dialog.close()
-                self.remove_images(
-                    'all' if self.ui_affect_all.value else 'selected',
-                    soft=soft,
-                )
-            
-            with ui.row().classes('w-full'):
-                ui.button("Yes", on_click=lambda: apply(soft=True), color='amber')
-                ui.button("No", on_click=dialog.close)
-                
-                safety = ui.switch().style('margin-left: auto')
-                delete_hard = ui.button("DELETE PERMANENTLY", on_click=lambda: apply(soft=False), color='red')
-                
-                delete_hard.disable()
-                safety.bind_value(delete_hard, 'enabled')
-        
-        dialog.open()
     
     def remove_images(self, mode: typing.Literal['selected', 'all'], soft: bool = True) -> None:
         super().remove_images(mode, soft)
@@ -413,12 +461,21 @@ class UIDataset(dataset.Dataset):
 
 
 def run_ui(
+    *,
+    kohya_path: str | pathlib.Path,
     port: int | None = None,
     dataset_path: str | pathlib.Path | None = None,
     show: bool = False,
     dark_mode: bool = False,
 ) -> None:
-
+    if isinstance(kohya_path, str):
+        kohya_path = pathlib.Path(kohya_path)
+    
+    assert kohya_path.is_dir(), f"Invalid kohya path: {kohya_path}"
+    
+    global KOHYA_PATH
+    KOHYA_PATH = kohya_path
+    
     ui.add_head_html(GLOBAL_CSS)
     
     ui.switch("Toggle dark mode", on_change=toggle_dark).set_value(dark_mode)
@@ -456,7 +513,9 @@ def run_ui(
     table = ui.row().classes('w-full')
     
     def _load_dataset() -> None:
-        ds = UIDataset.from_path(dataset_path_field.value).setup(dataset_controls, table)
+        ds: UIDataset = UIDataset.from_path(dataset_path_field.value)
+        
+        ds.setup(dataset_controls, table)
         
         dataset_save_btn.on(
             "click",
@@ -470,6 +529,8 @@ def run_ui(
 
     with ui.page_sticky('bottom-right', x_offset=20, y_offset=20).style('z-index: 1000'):
         ui.button("Scroll to the top", on_click=scroll_top)
+
+        ui.button("Test", on_click=lambda _: asyncio.create_task(_test()))
     
     if dataset_path:
         dataset_path_field.value = str(dataset_path)
