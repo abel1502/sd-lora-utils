@@ -7,11 +7,13 @@ import platform
 
 
 HERE: typing.Final[pathlib.Path] = pathlib.Path(__file__).parent.resolve()
+# DEFAULT_KOHYA_PATH: typing.Final[pathlib.Path] = HERE / "../LoRA_Easy_Training_Scripts/sd_scripts"
 
 
 def run_kohya(
     script: str | pathlib.Path,
     *,
+    kohya_path: pathlib.Path,
     accelerate: bool = True,
     args: str | typing.Sequence[str] = (),
     env: dict[str, str] | None = None,
@@ -21,8 +23,6 @@ def run_kohya(
     The script is specified relative to the kohya-trainer folder.
     """
     
-    kohya_path = HERE / "kohya-trainer"
-    
     if isinstance(script, str):
         script = pathlib.Path(script)
     
@@ -31,12 +31,14 @@ def run_kohya(
     
     runner: str = "python"
     if accelerate:
-        runner = "accelerate launch --config_file=accelerate_config/config.yaml --num_cpu_threads_per_process=1"
+        # --config_file=accelerate_config/config.yaml
+        # Let's use the default config, in fact
+        runner = "accelerate launch --num_cpu_threads_per_process=1"
     
     if env is None:
         env = {}
     
-    activate_script = pathlib.Path(".venv/Scripts/activate")
+    activate_script = pathlib.Path("venv/Scripts/activate")
     env_str = "export " + " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items())
     
     if platform.system() == "Windows":

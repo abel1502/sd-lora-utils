@@ -2,10 +2,9 @@ from __future__ import annotations
 import typing
 import pathlib
 import argparse
-import subprocess
 import toml
 
-from kohya_runner import run_kohya
+from dataset_editor.kohya_runner import run_kohya
 
 
 parser = argparse.ArgumentParser(
@@ -23,6 +22,13 @@ parser.add_argument(
     type=pathlib.Path,
     default=pathlib.Path("E:\\Media\\LoRAs\\"),
     help="The root folder containing datasets and trained models",
+)
+
+parser.add_argument(
+    "--kohya",
+    type=pathlib.Path,
+    default=pathlib.Path(__file__) / "../LoRA_Easy_Training_Scripts/sd_scripts/",
+    help="The path to the kohya sd_scripts folder",
 )
 
 parser.add_argument(
@@ -47,6 +53,7 @@ def main() -> None:
     
     run_kohya(
         "train_network.py",
+        kohya_path=args.kohya,
         accelerate=True,
         args=[
             "--dataset_config", str(project_path / "dataset_config.toml"),

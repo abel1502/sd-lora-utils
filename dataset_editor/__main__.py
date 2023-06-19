@@ -11,6 +11,13 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument(
+    "-k", "--kohya",
+    type=pathlib.Path,
+    default=pathlib.Path(__file__) / "../../LoRA_Easy_Training_Scripts/sd_scripts/",
+    help="The path to the kohya sd_scripts folder",
+)
+
+parser.add_argument(
     "-d", "--dataset",
     type=pathlib.Path,
     help="immediately open the specified dataset",
