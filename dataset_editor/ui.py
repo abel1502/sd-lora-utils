@@ -155,7 +155,6 @@ class UIDataset(dataset.Dataset):
     ui_loading_dialog: ui.dialog | None = None
     ui_autotag_dialog: ui.dialog | None = None
     ui_find_duplicates_dialog: ui.dialog | None = None
-    ui_remove_images_dialog: ui.dialog | None = None
     
     
     def setup(
@@ -166,7 +165,7 @@ class UIDataset(dataset.Dataset):
         self.ui_controls = controls
         self.ui_table = table
         
-        self.setup_dialogs()
+        self.setup_cached_dialogs()
         
         controls.clear()
         
@@ -183,7 +182,7 @@ class UIDataset(dataset.Dataset):
         with self.ui_table:
             self.read()
     
-    def setup_dialogs(self) -> None:
+    def setup_cached_dialogs(self) -> None:
         with ui.dialog().props("persistent") as self.ui_loading_dialog:
             ui.spinner(size='xl')
         
@@ -243,37 +242,6 @@ class UIDataset(dataset.Dataset):
             with ui.row():
                 ui.button("Find duplicates", on_click=apply)
                 ui.button("Cancel", on_click=self.ui_find_duplicates_dialog.close)
-    
-        with ui.dialog() as self.ui_remove_images_dialog, ui.card():
-            which: str = "the selected"
-            assert self.selected_cnt == len(self.get_selection()), "Sanity check failed!"
-            
-            if self.ui_affect_all.value:
-                which = "all"
-                count = len(self)
-            
-            ui.markdown(
-                f"Are you sure you want to delete {which} images ({self.selected_cnt}) from this dataset?\n\n"
-                f" - Selecting 'Yes' will mark the images and tags with `.deleted` suffix.\n"
-                f" - Selecting 'DELETE PERMANENTLY' will permanently delete the image and tag files. Use with caution!\n"
-            )
-            
-            def apply(soft: bool) -> None:
-                self.ui_remove_images_dialog.close()
-                self.remove_images(
-                    'all' if self.ui_affect_all.value else 'selected',
-                    soft=soft,
-                )
-            
-            with ui.row().classes('w-full'):
-                ui.button("Yes", on_click=lambda: apply(soft=True), color='amber')
-                ui.button("No", on_click=self.ui_remove_images_dialog.close)
-                
-                safety = ui.switch().style('margin-left: auto')
-                delete_hard = ui.button("DELETE PERMANENTLY", on_click=lambda: apply(soft=False), color='red')
-                
-                delete_hard.disable()
-                safety.bind_value(delete_hard, 'enabled')
     
         # TODO: More?
     
@@ -408,19 +376,23 @@ class UIDataset(dataset.Dataset):
     def _add_special_buttons(self) -> None:
         ui.button(
             "Autotag",
-            on_click=self.ui_autotag_dialog.open,
+            on_click=self._ask_autotag,
             color='purple',
         )
         ui.button(
             "Find duplicates",
-            on_click=self.ui_find_duplicates_dialog.open,
+            on_click=self._ask_find_duplicates,
             color='purple',
         )
+        
         ui.button(
             "Remove images",
-            on_click=self.ui_remove_images_dialog.open,
+            on_click=self._ask_remove_images,
             color='red',
         )
+    
+    def _ask_autotag(self) -> None:
+        self.ui_autotag_dialog.open()
     
     def autotag(self, threshold: float, blacklist_tags: list[str]) -> None:
         ui.notify("Autotagging...", type='info')
@@ -451,8 +423,46 @@ class UIDataset(dataset.Dataset):
         
         ui.notify("Autotagging complete!", type='success')
     
+    def _ask_find_duplicates(self) -> None:
+        self.ui_find_duplicates_dialog.open()
+    
     def find_duplicates(self, threshold: float) -> None:
         ui.notify('Not implemented yet!', type='info')
+    
+    def _ask_remove_images(self) -> None:
+        with ui.dialog() as dialog, ui.card():
+            which: str = "the selected"
+            assert self.selected_cnt == len(self.get_selection()), "Sanity check failed!"
+            count: int = self.selected_cnt
+            
+            if self.ui_affect_all.value:
+                which = "ALL"
+                count = len(self)
+            
+            ui.markdown(
+                f"Are you sure you want to delete {which} images ({count}) from this dataset?\n\n"
+                f" - Selecting 'Yes' will mark the images and tags with `.deleted` suffix.\n"
+                f" - Selecting 'DELETE PERMANENTLY' will permanently delete the image and tag files. Use with caution!\n"
+            )
+            
+            def apply(soft: bool) -> None:
+                dialog.close()
+                self.remove_images(
+                    'all' if self.ui_affect_all.value else 'selected',
+                    soft=soft,
+                )
+            
+            with ui.row().classes('w-full'):
+                ui.button("Yes", on_click=lambda: apply(soft=True), color='amber')
+                ui.button("No", on_click=dialog.close)
+                
+                safety = ui.switch().style('margin-left: auto')
+                delete_hard = ui.button("DELETE PERMANENTLY", on_click=lambda: apply(soft=False), color='red')
+                
+                delete_hard.disable()
+                safety.bind_value(delete_hard, 'enabled')
+        
+        dialog.open()
     
     def remove_images(self, mode: typing.Literal['selected', 'all'], soft: bool = True) -> None:
         super().remove_images(mode, soft)
@@ -529,8 +539,6 @@ def run_ui(
 
     with ui.page_sticky('bottom-right', x_offset=20, y_offset=20).style('z-index: 1000'):
         ui.button("Scroll to the top", on_click=scroll_top)
-
-        ui.button("Test", on_click=lambda _: asyncio.create_task(_test()))
     
     if dataset_path:
         dataset_path_field.value = str(dataset_path)
