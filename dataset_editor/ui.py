@@ -5,9 +5,10 @@ import base64
 import pathlib
 from dataclasses import dataclass, field
 import asyncio
+import contextlib
 
 from . import dataset
-from .kohya_runner import run_kohya
+from .kohya_runner import run_kohya, run_kohya_async
 from .local_file_picker import local_file_picker
 
 
@@ -200,26 +201,23 @@ class UIDataset(dataset.Dataset):
                 value=0.4,
             )
             
-            blacklist_tags = ui.input(
+            blacklist_tags = ui.textarea(
                 "Blacklist tags",
                 value=dataset.join_tags([
                     "official alternate costume", "official alternate hairstyle",
                     "official alternate hair length",
                     "alternate costume", "alternate hairstyle",
                     "alternate hair length", "alternate hair color",
-                ]),
-            )
-            
-            def apply() -> None:
-                self.ui_autotag_dialog.close()
-                
-                self.autotag(
-                    confidence_slider.value,
-                    dataset.split_tags(blacklist_tags.value),
-                )
+                ], trailing_comma=True),
+            ).classes("w-full")
             
             with ui.row():
-                ui.button("Autotag", on_click=apply)
+                ui.button("Autotag", on_click=lambda:
+                    self.ui_autotag_dialog.submit((
+                        confidence_slider.value,
+                        dataset.split_tags(blacklist_tags.value),
+                    ))
+                )
                 ui.button("Cancel", on_click=self.ui_autotag_dialog.close)
     
         with ui.dialog() as self.ui_find_duplicates_dialog, ui.card():
@@ -234,16 +232,26 @@ class UIDataset(dataset.Dataset):
                 value=0.98,
             )
             
-            def apply() -> None:
-                self.ui_find_duplicates_dialog.close()
-                
-                self.find_duplicates(similarity_slider.value)
-            
             with ui.row():
-                ui.button("Find duplicates", on_click=apply)
+                ui.button("Find duplicates", on_click=lambda:
+                    self.ui_find_duplicates_dialog.submit((
+                        similarity_slider.value,
+                    ))
+                )
                 ui.button("Cancel", on_click=self.ui_find_duplicates_dialog.close)
     
         # TODO: More?
+    
+    @contextlib.asynccontextmanager
+    async def loading_dialog(self) -> typing.Iterator[None]:
+        self.ui_loading_dialog.open()
+        
+        await asyncio.sleep(0)
+        
+        try:
+            yield
+        finally:
+            self.ui_loading_dialog.close()
     
     def add_controls(self) -> None:
         with ui.column().style('width: 90%'):
@@ -391,13 +399,17 @@ class UIDataset(dataset.Dataset):
             color='red',
         )
     
-    def _ask_autotag(self) -> None:
-        self.ui_autotag_dialog.open()
-    
-    def autotag(self, threshold: float, blacklist_tags: list[str]) -> None:
-        ui.notify("Autotagging...", type='info')
+    async def _ask_autotag(self) -> None:
+        result: tuple[float, list[str]] | None = await self.ui_autotag_dialog
         
-        run_kohya(
+        if result is None:
+            return
+        
+        async with self.loading_dialog():
+            await self.autotag(*result)
+    
+    async def autotag(self, threshold: float, blacklist_tags: list[str]) -> None:
+        await run_kohya_async(
             "finetune/tag_images_by_wd14_tagger.py",
             kohya_path=KOHYA_PATH,
             args=[
@@ -423,13 +435,19 @@ class UIDataset(dataset.Dataset):
         
         ui.notify("Autotagging complete!", type='success')
     
-    def _ask_find_duplicates(self) -> None:
-        self.ui_find_duplicates_dialog.open()
+    async def _ask_find_duplicates(self) -> None:
+        result: tuple[float] | None = await self.ui_find_duplicates_dialog
+        
+        if result is None:
+            return
+        
+        async with self.loading_dialog():
+            await self.find_duplicates(*result)
     
-    def find_duplicates(self, threshold: float) -> None:
+    async def find_duplicates(self, threshold: float) -> None:
         ui.notify('Not implemented yet!', type='info')
     
-    def _ask_remove_images(self) -> None:
+    async def _ask_remove_images(self) -> None:
         with ui.dialog() as dialog, ui.card():
             which: str = "the selected"
             assert self.selected_cnt == len(self.get_selection()), "Sanity check failed!"
@@ -446,11 +464,10 @@ class UIDataset(dataset.Dataset):
             )
             
             def apply(soft: bool) -> None:
-                dialog.close()
-                self.remove_images(
+                dialog.submit((
                     'all' if self.ui_affect_all.value else 'selected',
-                    soft=soft,
-                )
+                    soft,
+                ))
             
             with ui.row().classes('w-full'):
                 ui.button("Yes", on_click=lambda: apply(soft=True), color='amber')
@@ -462,8 +479,15 @@ class UIDataset(dataset.Dataset):
                 delete_hard.disable()
                 safety.bind_value(delete_hard, 'enabled')
         
-        dialog.open()
+        result: tuple[str, bool] | None = await dialog
+        
+        if result is None:
+            return
+
+        async with self.loading_dialog():
+            self.remove_images(*result)
     
+    # TODO: Make async somehow?
     def remove_images(self, mode: typing.Literal['selected', 'all'], soft: bool = True) -> None:
         super().remove_images(mode, soft)
         
