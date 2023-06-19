@@ -79,9 +79,7 @@ async def run_kohya_async(
     )
     
     process: asyncio.subprocess.Process = await asyncio.create_subprocess_shell(
-        cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        cmd
     )
     
     retcode: int = await process.wait()
