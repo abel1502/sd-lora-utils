@@ -203,12 +203,12 @@ class UIDataset(dataset.Dataset):
             
             blacklist_tags = ui.input(
                 "Blacklist tags",
-                value=dataset.join_tags(
+                value=dataset.join_tags([
                     "official alternate costume", "official alternate hairstyle",
                     "official alternate hair length",
                     "alternate costume", "alternate hairstyle",
                     "alternate hair length", "alternate hair color",
-                ),
+                ]),
             )
             
             def apply() -> None:
