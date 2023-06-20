@@ -107,6 +107,7 @@ class UIDatasetItem(dataset.DatasetItem):
         
         self.prev_tags_label.set_content(f"**Stored tags:**\n\n{self.tags_str}")
         self.input_field.value = self.tags_str
+        self.update_style()
 
     def on_changed(self) -> None:
         super().on_changed()
@@ -409,11 +410,14 @@ class UIDataset(dataset.Dataset):
             await self.autotag(*result)
     
     async def autotag(self, threshold: float, blacklist_tags: list[str]) -> None:
+        for file in self.path.glob(f"*{self.tags_file_ext}"):
+            file.unlink()
+        
         await run_kohya_async(
             "finetune/tag_images_by_wd14_tagger.py",
             kohya_path=KOHYA_PATH,
             args=[
-                str(self.path),
+                f"{self.path}",
                 "--repo_id=SmilingWolf/wd-v1-4-swinv2-tagger-v2",
                 "--model_dir=./cache",
                 f"--thresh={threshold}",
