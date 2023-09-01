@@ -1,3 +1,4 @@
-nicegui~=1.2.20
+nicegui~=1.3.13
 imagededup~=0.3.2
 toml~=0.10.2
+markdown_strings~=3.3.0

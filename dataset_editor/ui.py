@@ -6,6 +6,7 @@ import pathlib
 from dataclasses import dataclass, field
 import asyncio
 import contextlib
+from markdown_strings import esc_format as md_escape
 
 from . import dataset
 from .kohya_runner import run_kohya, run_kohya_async
@@ -105,7 +106,7 @@ class UIDatasetItem(dataset.DatasetItem):
     def on_reset(self) -> None:
         super().on_reset()
         
-        self.prev_tags_label.set_content(f"**Stored tags:**\n\n{self.tags_str}")
+        self.prev_tags_label.set_content(f"**Stored tags:**\n\n{md_escape(self.tags_str)}")
         self.input_field.value = self.tags_str
         self.update_style()
 
